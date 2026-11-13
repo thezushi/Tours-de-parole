@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tours de parole</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--tx:#1d1d1b;--mut:#6b6a65;--ac:#2f5d8a;--acx:#fff;--bd:#e0ded7;--hl:#e8f0f8;--dg:#b3402e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171717;--card:#222;--tx:#eee;--mut:#9a9890;--ac:#6fa3d6;--acx:#101820;--bd:#383835;--hl:#1e2b38;--dg:#e07a68;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#171717;--card:#222;--tx:#eee;--mut:#9a9890;--ac:#6fa3d6;--acx:#101820;--bd:#383835;--hl:#1e2b38;--dg:#e07a68;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:1.2rem;margin:0}
+h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:20px 0 8px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.tag{font-size:.75rem;color:var(--mut);border:1px solid var(--bd);border-radius:20px;padding:2px 10px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px}
+#now{background:var(--hl);text-align:center;padding:22px 14px}
+#now small{color:var(--mut);display:block}
+#cur{font-size:2rem;font-weight:700;margin:6px 0 4px;overflow-wrap:anywhere}
+#tm{font-size:1.6rem;font-variant-numeric:tabular-nums;margin-bottom:12px;min-height:1.6em}
+#tm.over{color:var(--dg);font-weight:700}
+form{display:flex;gap:8px}
+input[type=text],input[type=number]{flex:1;min-width:0;font:inherit;padding:12px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx)}
+button{font:inherit;border:0;border-radius:10px;padding:12px 16px;background:var(--ac);color:var(--acx);font-weight:600;cursor:pointer}
+button.ghost{background:transparent;color:var(--mut);border:1px solid var(--bd);font-weight:400;padding:8px 12px}
+button.sm{padding:8px 14px}
+button.x{background:transparent;color:var(--dg);padding:4px 10px;font-size:1.3rem;line-height:1}
+#msg{min-height:1.3em;color:var(--dg);font-size:.9rem;margin:6px 2px 0}
+#msg .row{display:flex;gap:8px;margin-top:8px}
+ol,ul{list-style:none;margin:0;padding:0}
+li{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--bd)}
+li:last-child{border:0}
+.n{color:var(--mut);width:1.6em}
+.nm{flex:1;overflow-wrap:anywhere}
+.b{background:var(--hl);border-radius:20px;padding:2px 10px;font-size:.85rem;color:var(--mut)}
+.empty{color:var(--mut);padding:6px 0}
+.set{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.set input[type=number]{flex:0 0 5.5em;padding:8px}
+.hint{font-size:.8rem;color:var(--mut);margin:6px 0 0}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<div class="top"><h1>Tours de parole</h1></div>
+
+<div id="now" class="card">
+  <small>La parole est à</small>
+  <div id="cur">—</div>
+  <div id="tm"></div>
+  <div style="margin-bottom:10px"><button id="pause" class="ghost sm adm">Pause</button></div>
+  <button id="next" class="adm">Suivant</button>
+</div>
+
+<div id="timerset" class="card adm" style="margin-top:10px">
+  <div class="set">
+    <label><input type="checkbox" id="ton"> Chronomètre</label>
+    <span>durée :</span><input type="number" id="tmin" min="0.5" max="60" step="0.5" value="2"><span>min</span>
+  </div>
+  <div class="set" style="margin-top:10px"><label><input type="checkbox" id="tsort"> Tri par nombre de prises de parole</label></div>
+</div>
+
+<div class="adm">
+<h2>S’inscrire</h2>
+<form id="f">
+  <input type="text" id="name" placeholder="Nom de la personne" autocomplete="off" autocapitalize="words" maxlength="60">
+  <button type="submit">Ajouter</button>
+</form>
+</div>
+<div id="msg"></div>
+
+<h2 id="qh">File d’attente</h2>
+<div class="card"><ol id="q"></ol></div>
+
+<h2>Prises de parole</h2>
+<div class="card"><ul id="st"></ul></div>
+
+<div style="text-align:center;margin-top:24px">
+  <p class="adm" style="margin-top:14px"><button class="ghost" id="reset">Tout réinitialiser</button></p>
+</div>
+</main>
+
+<script>
+var KEY='tours-de-parole-v2';
+function fresh(){return {people:[],queue:[],current:null,seq:0,speakStart:null,pausedAt:null,sortByCount:true,timer:{on:false,min:2}};}
+function fix(s){var d=fresh();s=s||{};
+  d.people=Array.isArray(s.people)?s.people:[];d.queue=Array.isArray(s.queue)?s.queue:[];
+  d.current=s.current||null;d.seq=s.seq||0;d.speakStart=s.speakStart||null;d.pausedAt=s.pausedAt||null;d.sortByCount=s.sortByCount!==false;
+  if(s.timer){d.timer.on=!!s.timer.on;d.timer.min=+s.timer.min||2;}return d;}
+var S=fresh(),mode='local',pending=null;
+function $(id){return document.getElementById(id);}
+function norm(s){return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/gi,' ').replace(/\s+/g,' ').trim().toLowerCase();}
+function P(k){for(var i=0;i<S.people.length;i++)if(S.people[i].key===k)return S.people[i];return null;}
+function canWrite(){return mode==='local'||mode==='admin';}
+
+/* Distance d’édition (insertion, suppression, substitution, permutation) */
+function dist(a,b){var m=a.length,n=b.length,d=[],i,j;
+  for(i=0;i<=m;i++){d[i]=[i];}for(j=0;j<=n;j++)d[0][j]=j;
+  for(i=1;i<=m;i++)for(j=1;j<=n;j++){
+    var c=a[i-1]===b[j-1]?0:1;
+    d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+c);
+    if(i>1&&j>1&&a[i-1]===b[j-2]&&a[i-2]===b[j-1])d[i][j]=Math.min(d[i][j],d[i-2][j-2]+1);
+  }return d[m][n];}
+function close(k){
+  var best=null,bd=99,t=k.length<=3?0:(k.length<=6?1:2);
+  if(!t)return null;
+  S.people.forEach(function(p){var x=dist(k,p.key);if(x<=t&&x<bd){bd=x;best=p;}});
+  return best;}
+
+/* Persistance : locale ou base partagée */
+function commit(){
+  try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+  render();}
+
+function say(t){var m=$('msg');m.textContent=t||'';pending=null;}
+
+function enqueue(p){
+  if(S.queue.some(function(x){return x.key===p.key;})){say(p.name+' est déjà dans la file.');return;}
+  S.queue.push({key:p.key,seq:++S.seq});say('');commit();}
+
+$('f').addEventListener('submit',function(e){
+  e.preventDefault();if(!canWrite())return;
+  var raw=$('name').value.replace(/\s+/g,' ').trim();if(!raw)return;
+  var k=norm(raw);if(!k)return;
+  $('name').value='';
+  var ex=P(k);
+  if(ex){enqueue(ex);return;}
+  var c=close(k);
+  if(c){askClose(raw,k,c);return;}
+  var p={key:k,name:raw,count:0};S.people.push(p);enqueue(p);
+  $('name').focus();});
+
+function askClose(raw,k,c){
+  var m=$('msg');m.textContent='Vous voulez dire « '+c.name+' » ?';
+  var r=document.createElement('div');r.className='row';
+  var y=document.createElement('button');y.className='sm';y.textContent='Oui, c’est '+c.name;
+  var n=document.createElement('button');n.className='sm ghost';n.textContent='Non, nouvelle personne';
+  y.onclick=function(){m.textContent='';enqueue(c);};
+  n.onclick=function(){m.textContent='';var p={key:k,name:raw,count:0};S.people.push(p);enqueue(p);};
+  r.append(y,n);m.appendChild(r);}
+
+function sorted(){return S.queue.slice().sort(function(a,b){return (S.sortByCount?P(a.key).count-P(b.key).count:0)||a.seq-b.seq;});}
+
+$('next').addEventListener('click',function(){
+  if(!canWrite())return;
+  var q=sorted();
+  if(!q.length){S.current=null;S.speakStart=null;S.pausedAt=null;}
+  else{var n=q[0];S.queue=S.queue.filter(function(x){return x.key!==n.key;});
+    P(n.key).count++;S.current=n.key;S.speakStart=Date.now();S.pausedAt=null;}
+  say('');commit();});
+
+$('ton').addEventListener('change',function(){if(!canWrite())return;S.timer.on=this.checked;commit();});
+$('tmin').addEventListener('change',function(){if(!canWrite())return;
+  var v=parseFloat(this.value);if(!(v>0))v=2;v=Math.min(60,Math.max(0.5,v));this.value=v;S.timer.min=v;commit();});
+
+$('pause').addEventListener('click',function(){if(!canWrite()||!S.current||!S.speakStart)return;
+  if(S.pausedAt){S.speakStart+=Date.now()-S.pausedAt;S.pausedAt=null;}else{S.pausedAt=Date.now();}commit();});
+$('tsort').addEventListener('change',function(){if(!canWrite())return;S.sortByCount=this.checked;commit();});
+
+var armed=false,tt,buzzed=null;
+$('reset').addEventListener('click',function(){
+  if(!canWrite())return;
+  if(!armed){armed=true;this.textContent='Confirmer la remise à zéro ?';tt=setTimeout(function(){armed=false;$('reset').textContent='Tout réinitialiser';},4000);return;}
+  clearTimeout(tt);armed=false;this.textContent='Tout réinitialiser';
+  var t=S.timer,ts=S.sortByCount;S=fresh();S.timer=t;S.sortByCount=ts;say('');commit();});
+
+
+function qInfo(){
+  var n=S.queue.length,t='File d’attente'+(n?' · '+n+' en attente':'');
+  if(n&&S.timer.on){
+    var cur=0;
+    if(S.current&&S.speakStart)cur=Math.max(0,S.timer.min*60000-((S.pausedAt||Date.now())-S.speakStart));
+    t+=' · ≈ '+Math.ceil((cur+n*S.timer.min*60000)/60000)+' min';
+  }
+  $('qh').textContent=t;}
+function fmt(ms){var s=Math.floor(Math.abs(ms)/1000);return Math.floor(s/60)+':'+('0'+(s%60)).slice(-2);}
+function renderTimer(){
+  var el=$('tm');
+  if(!S.timer.on||!S.current||!S.speakStart){el.textContent='';el.className='';return;}
+  var left=S.timer.min*60000-((S.pausedAt||Date.now())-S.speakStart);
+  if(left>=0){el.textContent=fmt(left)+(S.pausedAt?' · en pause':'');el.className='';}
+  else{el.textContent='+'+fmt(left)+' · temps écoulé';el.className='over';if(canWrite()&&!S.pausedAt&&left>-5000&&buzzed!==S.speakStart){buzzed=S.speakStart;try{if(navigator.vibrate)navigator.vibrate([250,120,250]);}catch(e){}}}}
+setInterval(function(){renderTimer();qInfo();},1000);
+
+function plusBtn(p){var x=document.createElement('button');x.className='ghost sm';x.textContent='+';x.style.padding='2px 10px';x.setAttribute('aria-label','Ajouter une prise de parole');x.onclick=function(){p.count++;commit();};return x;}
+function render(){
+  var w=canWrite();
+  document.querySelectorAll('.adm').forEach(function(e){e.hidden=!w;});
+  $('pause').hidden=!(w&&S.timer.on&&S.current);$('pause').textContent=S.pausedAt?'Reprendre':'Pause';$('tsort').checked=S.sortByCount;
+  var cur=S.current&&P(S.current);
+  $('cur').textContent=cur?cur.name:'—';
+  var ql=sorted();
+  $('next').textContent=ql.length?'Suivant':(cur?'Terminer':'Suivant');
+  $('ton').checked=S.timer.on;
+  if(document.activeElement!==$('tmin'))$('tmin').value=S.timer.min;
+  renderTimer();qInfo();
+
+  var q=$('q');q.innerHTML='';
+  if(!ql.length)q.innerHTML='<li class="empty">Personne en attente.</li>';
+  ql.forEach(function(it,i){
+    var p=P(it.key);var li=document.createElement('li');
+    var n=document.createElement('span');n.className='n';n.textContent=(i+1)+'.';
+    var nm=document.createElement('span');nm.className='nm';nm.textContent=p.name;
+    var b=document.createElement('span');b.className='b';b.textContent=p.count+(p.count>1?' prises':' prise');
+    li.append(n,nm,b);
+    if(w){var x=document.createElement('button');x.className='x';x.textContent='×';x.setAttribute('aria-label','Retirer');
+      x.onclick=function(){S.queue=S.queue.filter(function(y){return y.key!==it.key;});commit();};li.appendChild(x);}
+    q.appendChild(li);});
+
+  var st=$('st');st.innerHTML='';
+  var all=S.people.slice().sort(function(a,b){return b.count-a.count||a.name.localeCompare(b.name,'fr');});
+  if(!all.length)st.innerHTML='<li class="empty">Aucune pour l’instant.</li>';
+  all.forEach(function(p){var li=document.createElement('li');
+    var nm=document.createElement('span');nm.className='nm';nm.textContent=p.name;
+    var b=document.createElement('span');b.className='b';b.textContent=p.count;
+    li.append(nm,b);if(w)li.appendChild(plusBtn(p));st.appendChild(li);});}
+
+try{var r0=localStorage.getItem(KEY);if(r0)S=fix(JSON.parse(r0));}catch(e){}
+render();
+</script>
+</body>
+</html>
